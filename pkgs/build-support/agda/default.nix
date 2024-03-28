@@ -55,6 +55,7 @@ let
     , meta
     , buildInputs ? []
     , everythingFile ? "./Everything.agda"
+    , tcDirectory ? "./lib"
     , includePaths ? []
     , libraryName ? pname
     , libraryFile ? "${libraryName}.agda-lib"
@@ -64,7 +65,8 @@ let
     , ...
     }: let
       agdaWithArgs = withPackages (builtins.filter (p: p ? isAgdaDerivation) buildInputs);
-      includePathArgs = concatMapStrings (path: "-i" + path + " ") (includePaths ++ [(dirOf everythingFile)]);
+      includeTcPath = if everythingFile != null then (dirOf everythingFile) else tcDirectory;
+      includePathArgs = concatMapStrings (path: "-i" + path + " ") (includePaths ++ [includeTcPath]);
     in
       {
         inherit libraryName libraryFile;
@@ -73,11 +75,16 @@ let
 
         buildInputs = buildInputs ++ [ agdaWithArgs ];
 
-        buildPhase = if buildPhase != null then buildPhase else ''
-          runHook preBuild
-          agda ${includePathArgs} ${everythingFile}
-          runHook postBuild
-        '';
+        buildPhase = if buildPhase != null then buildPhase else
+          if everythingFile != null then ''
+            runHook preBuild
+            agda ${includePathArgs} ${everythingFile}
+            runHook postBuild
+          '' else ''
+            runHook preBuild
+            find "${args.tcDir}" -type f -name "*.agda" -print0 | xargs -0 -n1 -t -P $(nproc) ${"agda " + includePathArgs}
+            runHook postBuild
+          '';
 
         installPhase = if installPhase != null then installPhase else ''
           runHook preInstall
